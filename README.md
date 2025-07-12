@@ -10,7 +10,7 @@
 
 專案的核心目標是在保障資料隱私和無網路連線成本的前提下，利用本地運行的 AI 模型，提供一個準確、可靠且不會產生幻覺的天氣資訊助理。
 
-![圖片](https://ibb.co/4gnn5Mxb "圖片")
+![圖片](https://github.com/zenuie/taiwan-weather-chat/blob/main/wetherchat.png "圖片")
 
 ## ✨ 專案亮點
 
