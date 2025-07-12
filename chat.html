@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天氣 RAG 聊天機器人 (流式版)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --user-msg-bg: #007bff;
+            --bot-msg-bg: #e9ecef;
+            --bg-color: #f4f7f9;
+            --text-color: #333;
+            --light-text-color: #fff;
+            --border-color: #ddd;
+        }
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: var(--text-color);
+        }
+        #chat-container {
+            width: 100%;
+            max-width: 700px;
+            height: 90vh;
+            max-height: 800px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            background-color: #fff;
+        }
+        #chat-header {
+            background-color: var(--primary-color);
+            color: var(--light-text-color);
+            padding: 1rem;
+            font-size: 1.2rem;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #clearBtn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+            padding: 0 0.5rem;
+        }
+        #clearBtn:hover {
+            opacity: 1;
+        }
+        #chat-box {
+            flex-grow: 1;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .message {
+            padding: 0.75rem 1rem;
+            border-radius: 18px;
+            max-width: 80%;
+            line-height: 1.5;
+            white-space: pre-wrap; /* 確保換行符能被正確顯示 */
+        }
+        .user-message {
+            background-color: var(--user-msg-bg);
+            color: var(--light-text-color);
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+        .bot-message {
+            background-color: var(--bot-msg-bg);
+            color: var(--text-color);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+        #input-container {
+            display: flex;
+            padding: 1rem;
+            border-top: 1px solid var(--border-color);
+            background-color: #fff;
+        }
+        #userInput {
+            flex-grow: 1;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            margin-right: 0.5rem;
+        }
+        #userInput:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+        #sendBtn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #sendBtn:hover {
+            background-color: #0056b3;
+        }
+        .loading-dots span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #888;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1.0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="chat-container">
+        <div id="chat-header">
+            <span>天氣 RAG 聊天機器人</span>
+            <button id="clearBtn" title="清除對話紀錄">🗑️</button>
+        </div>
+        <div id="chat-box">
+            <div class="message bot-message">
+                您好！請問想知道哪裡的天氣資訊呢？
+            </div>
+        </div>
+        <div id="input-container">
+            <input type="text" id="userInput" placeholder="請在這裡輸入問題...">
+            <button id="sendBtn" title="傳送">➤</button>
+        </div>
+    </div>
+
+    <script>
+        const chatBox = document.getElementById('chat-box');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const clearBtn = document.getElementById('clearBtn');
+
+        // ✨ 指向新的流式 API 端點 ✨
+        const API_URL = 'http://127.0.0.1:8000/stream-ask-weather';
+
+        let chatHistory = [];
+
+        // ✨ 重寫 sendMessage 以處理流式回應 ✨
+        const sendMessage = async () => {
+            const userText = userInput.value.trim();
+            if (!userText) return;
+
+            addMessage(userText, 'user');
+            userInput.value = '';
+
+            const botMessageElement = addMessage("", 'bot');
+            botMessageElement.innerHTML = `<div class="loading-dots"><span></span><span></span><span></span></div>`;
+
+            let fullBotResponse = "";
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: userText,
+                        chat_history: chatHistory
+                    })
+                });
+
+                if (!response.ok) throw new Error(`伺服器錯誤: ${response.status}`);
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let isFirstChunk = true;
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+
+                    if (isFirstChunk) {
+                        botMessageElement.innerHTML = '';
+                        isFirstChunk = false;
+                    }
+
+                    botMessageElement.innerText += chunk;
+                    fullBotResponse += chunk;
+
+                    scrollToBottom();
+                }
+
+                // 流結束後，手動更新前端的對話歷史
+                chatHistory.push({ role: "user", content: userText });
+                chatHistory.push({ role: "bot", content: fullBotResponse });
+
+            } catch (error) {
+                console.error("錯誤:", error);
+                botMessageElement.innerText = "哎呀，連線好像失敗了，請檢查後端服務是否已啟動。";
+            }
+        };
+
+        const addMessage = (text, sender) => {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', `${sender}-message`);
+            messageElement.innerText = text;
+            chatBox.appendChild(messageElement);
+            scrollToBottom();
+            return messageElement;
+        };
+
+        const showLoadingIndicator = () => {
+            // 這個函式現在主要被 sendMessage 中的邏輯替代，但保留以防萬一
+            const loadingElement = document.createElement('div');
+            loadingElement.classList.add('message', 'bot-message', 'loading-dots');
+            loadingElement.innerHTML = '<span></span><span></span><span></span>';
+            chatBox.appendChild(loadingElement);
+            scrollToBottom();
+            return loadingElement;
+        };
+
+        const updateBotMessage = (messageElement, newText) => {
+             // 這個函式現在主要被 sendMessage 中的邏輯替代
+            messageElement.classList.remove('loading-dots');
+            messageElement.innerText = newText;
+        };
+
+        const scrollToBottom = () => {
+            chatBox.scrollTop = chatBox.scrollHeight;
+        };
+
+        const clearChat = () => {
+            chatHistory = [];
+            chatBox.innerHTML = '';
+            addMessage("您好！對話紀錄已清除，可以開始新的提問了。", 'bot');
+            console.log("對話紀錄已清除。");
+        };
+
+        sendBtn.addEventListener('click', sendMessage);
+        userInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') sendMessage();
+        });
+        clearBtn.addEventListener('click', clearChat);
+    </script>
+
+</body>
+</html>
