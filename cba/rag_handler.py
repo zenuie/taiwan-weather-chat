@@ -204,3 +204,14 @@ class RAGHandlerV5:
             {"role": "bot", "content": answer}
         ]
         return {"answer": answer, "chat_history": updated_history}
+def clean_answer(text):
+    """
+    移除模型輸出中常見的角色前綴，例如 AI:, Assistant:, 系統:, 等等。
+    """
+    import re
+    cleaned = re.sub(
+        r"^\s*(AI|Assistant|System|Human|系統|回答|答)?\s*[:：－—]*\s*", "", text.strip(), flags=re.IGNORECASE
+    )
+    # 第二步：移除開頭孤立的問號或標點（只針對開頭）
+    cleaned = re.sub(r"^[\?？！：:－—…\.。•\s]+", "", cleaned)
+    return cleaned

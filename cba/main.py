@@ -221,10 +221,13 @@ async def stream_generator(query: str, chat_history: list):
         }):
             if isinstance(chunk, dict) and "answer" in chunk and chunk["answer"]:
                 answer_piece = chunk["answer"]
-                yield answer_piece.encode("utf-8")
             elif isinstance(chunk, str) and chunk:
                 answer_piece = chunk
-                yield answer_piece.encode("utf-8")
+            else:
+                continue  # 沒有內容就略過
+
+            answer_piece = clean_answer(answer_piece)
+            yield answer_piece.encode("utf-8")
             await asyncio.sleep(0.001)
     except Exception as e:
         logging.error(f"流式生成時出錯: {e}", exc_info=True)
